@@ -1,0 +1,16 @@
+# Core
+torch>=2.12,<3
+numpy>=1.26
+# Tokenizer + data
+tokenizers>=0.20,<0.30
+datasets>=3,<5
+# Judge model (eval) — Qwen2.5-7B-Instruct via transformers
+transformers>=4.45,<5
+accelerate>=1,<2
+# Plotting
+matplotlib>=3.8
+# Tests
+pytest>=8
+
+# Optional, GPU-only (Kaggle): 4-bit judge quantization. Not installed on macOS.
+# bitsandbytes>=0.43

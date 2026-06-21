@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tinychat"
+version = "0.1.0"
+description = "Ternary vs fp16 emergence-frontier research harness on TinyStories"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.pytest.ini_options]
+# src layout for `tinychat`; repo root so top-level `eval` package imports in tests.
+pythonpath = ["src", "."]
+testpaths = ["tests"]
+addopts = "-q"

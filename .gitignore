@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Large generated data (tokenized memmaps) — never commit
+artifacts/data/
+
+# Run outputs (checkpoints, CSVs). Keep these out of git; they are reproducible.
+runs/
+
+# OS
+.DS_Store
