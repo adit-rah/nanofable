@@ -1,0 +1,57 @@
+import numpy as np
+
+from tinychat.data import batch_iterator, build_token_memmap
+from tinychat.tokenizer import load_tokenizer, train_tokenizer
+
+CORPUS = [
+    "Once upon a time there was a little cat named Tom.",
+    "Tom liked to play in the garden every day with his friend Lily.",
+    "One day they found a shiny red ball under the big oak tree.",
+] * 100
+
+
+def _make_tokenizer(tmp_path):
+    p = str(tmp_path / "tok.json")
+    train_tokenizer(CORPUS, save_path=p, vocab_size=512)
+    return load_tokenizer(p)
+
+
+def test_memmap_dtype_and_range(tmp_path):
+    tok = _make_tokenizer(tmp_path)
+    out = str(tmp_path / "data.bin")
+    n = build_token_memmap(CORPUS, tok, out)
+    arr = np.memmap(out, dtype=np.uint16, mode="r")
+    assert arr.dtype == np.uint16
+    assert arr.shape[0] == n
+    assert int(arr.max()) < 512  # all token ids fit the vocab
+
+
+def test_batch_iterator_deterministic(tmp_path):
+    tok = _make_tokenizer(tmp_path)
+    out = str(tmp_path / "data.bin")
+    build_token_memmap(CORPUS, tok, out)
+    it1 = batch_iterator(out, ctx=8, tokens_per_step=32, seed=0)
+    it2 = batch_iterator(out, ctx=8, tokens_per_step=32, seed=0)
+    x1, y1 = next(it1)
+    x2, y2 = next(it2)
+    assert (x1 == x2).all() and (y1 == y2).all()
+
+
+def test_batch_shapes_and_shift(tmp_path):
+    tok = _make_tokenizer(tmp_path)
+    out = str(tmp_path / "data.bin")
+    build_token_memmap(CORPUS, tok, out)
+    it = batch_iterator(out, ctx=8, tokens_per_step=32, seed=1)
+    x, y = next(it)
+    assert x.shape == (4, 8) and y.shape == (4, 8)
+    # y is x shifted by one position
+    assert (y[:, :-1] == x[:, 1:]).all()
+
+
+def test_different_seed_differs(tmp_path):
+    tok = _make_tokenizer(tmp_path)
+    out = str(tmp_path / "data.bin")
+    build_token_memmap(CORPUS, tok, out)
+    x0, _ = next(batch_iterator(out, ctx=8, tokens_per_step=32, seed=0))
+    x1, _ = next(batch_iterator(out, ctx=8, tokens_per_step=32, seed=7))
+    assert not (x0 == x1).all()
