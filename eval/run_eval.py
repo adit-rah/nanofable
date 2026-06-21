@@ -41,6 +41,7 @@ def load_model_from_run(run_dir: str):
     model = build_model(cfg, meta["precision"])
     ckpt = load_latest(run_dir)
     model.load_state_dict(ckpt["model"])
+    model.to("cuda" if torch.cuda.is_available() else "cpu")
     model.eval()
     return model
 
