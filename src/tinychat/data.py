@@ -35,21 +35,24 @@ def build_token_memmap(texts: Iterable[str], tokenizer, out_path: str) -> int:
 
 
 def batch_iterator(
-    memmap_path: str, ctx: int, tokens_per_step: int, seed: int
+    memmap_path: str, ctx: int, tokens_per_step: int, seed: int, start_step: int = 0
 ) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:
     """Yield (x, y) batches of shape [tokens_per_step // ctx, ctx], y = x shifted by 1.
 
-    Deterministic: a fresh RNG seeded with `seed` means two iterators with the same seed
-    yield identical sequences.
+    Each step draws from an independent RNG substream `default_rng([seed, step])`, so the
+    stream is both deterministic *and* indexable by step: resuming at `start_step` produces
+    exactly the batches that a fresh run would have at that step (O(1) resume, no skipping).
     """
     data = np.memmap(memmap_path, dtype=np.uint16, mode="r")
     rows = tokens_per_step // ctx
     max_start = data.shape[0] - ctx - 1
     if max_start <= 0:
         raise ValueError("memmap too small for the requested ctx")
-    rng = np.random.default_rng(seed)
+    step = start_step
     while True:
+        rng = np.random.default_rng([seed, step])
         starts = rng.integers(0, max_start, size=rows)
         x = np.stack([data[s : s + ctx] for s in starts]).astype(np.int64)
         y = np.stack([data[s + 1 : s + ctx + 1] for s in starts]).astype(np.int64)
         yield torch.from_numpy(x), torch.from_numpy(y)
+        step += 1

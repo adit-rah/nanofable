@@ -48,6 +48,19 @@ def test_batch_shapes_and_shift(tmp_path):
     assert (y[:, :-1] == x[:, 1:]).all()
 
 
+def test_start_step_matches_advanced_iterator(tmp_path):
+    # Resuming at start_step=3 yields what the 4th batch of a fresh run would be.
+    tok = _make_tokenizer(tmp_path)
+    out = str(tmp_path / "data.bin")
+    build_token_memmap(CORPUS, tok, out)
+    it = batch_iterator(out, ctx=8, tokens_per_step=32, seed=0)
+    for _ in range(3):
+        next(it)
+    x_fresh, _ = next(it)  # the 4th batch (step index 3)
+    x_resume, _ = next(batch_iterator(out, ctx=8, tokens_per_step=32, seed=0, start_step=3))
+    assert (x_fresh == x_resume).all()
+
+
 def test_different_seed_differs(tmp_path):
     tok = _make_tokenizer(tmp_path)
     out = str(tmp_path / "data.bin")
