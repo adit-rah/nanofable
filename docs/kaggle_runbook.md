@@ -26,6 +26,11 @@ of the study. This doc is the short companion: what runs, in what order, and the
 - Cap a session by setting `ONLY` in the sweep cell to a subset of the matrix.
 
 ## Gotchas
+- **Never `pip install -r requirements.txt` on Kaggle.** `requirements.txt` pins `torch>=2.12`
+  for the local dev env; installing it on Kaggle upgrades Kaggle's torch (2.10) and breaks the
+  preinstalled `transformers` with `ImportError: cannot import name '_maybe_view_chunk_cat'`.
+  The notebook's install cell instead installs only `bitsandbytes` and leaves Kaggle's
+  torch/transformers/datasets/tokenizers stack as shipped. Our code runs on Kaggle's torch.
 - **Calibration is a gate, not a formality.** Before trusting any capability claim, confirm in
   `eval/calibration.md`: good refs clear ~4.0, garbage well below, and **intra-judge std <
   good−bad gap**. If the judge is too noisy, swap/upgrade it (an Anthropic-API pass via
