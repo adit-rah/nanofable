@@ -23,6 +23,12 @@ def load_judge_prompt() -> str:
     return (m.group(1) if m else text).strip()
 
 
+def fill_prompt(template: str, prefix: str, completion: str) -> str:
+    """Fill {prefix}/{completion} by plain replacement — NOT str.format, which chokes on
+    the literal JSON example braces in the frozen prompt (KeyError: '"grammar"')."""
+    return template.replace("{prefix}", prefix).replace("{completion}", completion)
+
+
 def _clamp(v) -> int:
     return max(0, min(5, int(round(float(v)))))
 
@@ -74,7 +80,7 @@ class LocalQwenJudge:
         self.model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
 
     def score(self, prefix: str, completion: str) -> dict:
-        prompt = self.template.format(prefix=prefix, completion=completion)
+        prompt = fill_prompt(self.template, prefix, completion)
         messages = [{"role": "user", "content": prompt}]
         inputs = self.tokenizer.apply_chat_template(
             messages, add_generation_prompt=True, return_tensors="pt"
@@ -95,7 +101,7 @@ class AnthropicJudge:
         self.template = load_judge_prompt()
 
     def score(self, prefix: str, completion: str) -> dict:
-        prompt = self.template.format(prefix=prefix, completion=completion)
+        prompt = fill_prompt(self.template, prefix, completion)
         msg = self.client.messages.create(
             model=self.model, max_tokens=64,
             messages=[{"role": "user", "content": prompt}],

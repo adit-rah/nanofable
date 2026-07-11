@@ -1,4 +1,10 @@
-from eval.judge import AXES, parse_judge_json, per_completion_score
+from eval.judge import (
+    AXES,
+    fill_prompt,
+    load_judge_prompt,
+    parse_judge_json,
+    per_completion_score,
+)
 
 
 class FakeJudge:
@@ -26,6 +32,16 @@ def test_parse_clamps_out_of_range():
 def test_parse_missing_axis_defaults_zero():
     s = '{"grammar": 5}'
     assert parse_judge_json(s) == {"grammar": 5, "consistency": 0, "completes": 0}
+
+
+def test_fill_frozen_prompt_survives_json_example():
+    # The frozen prompt ends with a literal JSON example in braces; filling the template
+    # must not choke on it (str.format raises KeyError: '"grammar"').
+    out = fill_prompt(load_judge_prompt(), "Once upon a time", "they lived happily.")
+    assert "Once upon a time" in out
+    assert "they lived happily." in out
+    assert '{"grammar":' in out  # JSON example preserved verbatim
+    assert "{prefix}" not in out and "{completion}" not in out
 
 
 def test_fake_judge_protocol_shape():
