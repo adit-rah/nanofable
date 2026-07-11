@@ -26,6 +26,13 @@ of the study. This doc is the short companion: what runs, in what order, and the
 - Cap a session by setting `ONLY` in the sweep cell to a subset of the matrix.
 
 ## Gotchas
+- **Run interactively (editor draft session), NOT "Save & Run All".** A commit/batch run
+  (papermill) starts from a clean disk every time — no persisted `runs/`, no HF cache, so it
+  re-downloads everything and can't resume — and it aborts the whole notebook on the first
+  error. The workflow assumes a live editor session with *Files only* persistence.
+- **HF downloads are cached across sessions.** `bootstrap()` sets `HF_HOME=/kaggle/working/hf`
+  so the Qwen judge (~15GB) and TinyStories download once and persist; without it they'd be
+  re-pulled every session.
 - **Never `pip install -r requirements.txt` on Kaggle.** `requirements.txt` pins `torch>=2.12`
   for the local dev env; installing it on Kaggle upgrades Kaggle's torch (2.10) and breaks the
   preinstalled `transformers` with `ImportError: cannot import name '_maybe_view_chunk_cat'`.
@@ -42,3 +49,10 @@ of the study. This doc is the short companion: what runs, in what order, and the
   micro-batch). fp16 autocast is already on for GPU runs.
 - **Don't hand-edit results.** `metrics.csv` / `eval.json` are produced by the harness; the
   plot reads them.
+
+## Monitoring
+The sweep cell prints a banner per run (params, bytes, resume step) and a progress line at
+every eval interval (250 steps): train loss, val PPL, tokens/sec, session ETA. Watch the
+first lines of each tier for throughput — if the ETA doesn't fit the session, cap it with
+`ONLY`. A non-finite train loss (ternary collapse, spec §12) **raises immediately** rather
+than training on silently; re-running the sweep retries that run from its last checkpoint.

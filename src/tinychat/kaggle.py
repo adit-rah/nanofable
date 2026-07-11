@@ -84,6 +84,10 @@ def bootstrap(repo_dir: str | None = None, work: str = "/kaggle/working",
     Returns a :class:`Ctx` with the paths the rest of the notebook uses.
     """
     repo_dir = repo_dir or os.getcwd()
+    # Cache HF downloads (Qwen judge ~15GB, TinyStories) under /kaggle/working so "Files
+    # only" persistence keeps them across sessions. Must be set before the first
+    # transformers/datasets import; setdefault so an explicit override wins.
+    os.environ.setdefault("HF_HOME", os.path.join(work, "hf"))
     install_deps()
 
     import torch
