@@ -47,11 +47,14 @@ def _degenerate(text: str) -> str:
     return (first + " ") * 30
 
 
-def score_set(judge, prefixes, completion_fn) -> list[float]:
+def score_set(judge, prefixes, completion_fn, label: str = "") -> list[float]:
     scores = []
-    for item in prefixes:
+    for i, item in enumerate(prefixes, 1):
         comp = completion_fn(item)
         scores.append(per_completion_score(judge.score(item["prefix"], comp)))
+        if i % 50 == 0 or i == len(prefixes):
+            print(f"[{label}] scored {i}/{len(prefixes)} | running mean "
+                  f"{statistics.fmean(scores):.3f}", flush=True)
     return scores
 
 
@@ -62,16 +65,19 @@ def main(judge=None, model33m_fn=None, repeats: int = 3):
         judge = LocalQwenJudge()
     prefixes = _load_prefixes()
 
-    good = score_set(judge, prefixes, lambda it: it["gold_continuation"])
-    bad = score_set(judge, prefixes, lambda it: _degenerate(it["gold_continuation"]))
+    good = score_set(judge, prefixes, lambda it: it["gold_continuation"], label="good")
+    bad = score_set(judge, prefixes, lambda it: _degenerate(it["gold_continuation"]),
+                    label="bad")
     mediocre = (
-        score_set(judge, prefixes, model33m_fn) if model33m_fn else None
+        score_set(judge, prefixes, model33m_fn, label="33M") if model33m_fn else None
     )
 
     # intra-judge stability: re-score the good set `repeats` times, report std of the mean.
     repeat_means = [
-        statistics.fmean(score_set(judge, prefixes, lambda it: it["gold_continuation"]))
-        for _ in range(repeats)
+        statistics.fmean(score_set(judge, prefixes,
+                                   lambda it: it["gold_continuation"],
+                                   label=f"stability {r + 1}/{repeats}"))
+        for r in range(repeats)
     ]
     intra_std = statistics.pstdev(repeat_means) if len(repeat_means) > 1 else 0.0
 
