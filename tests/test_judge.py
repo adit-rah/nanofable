@@ -1,5 +1,9 @@
+import torch
+from transformers import BatchEncoding
+
 from eval.judge import (
     AXES,
+    LocalQwenJudge,
     fill_prompt,
     load_judge_prompt,
     parse_judge_json,
@@ -42,6 +46,38 @@ def test_fill_frozen_prompt_survives_json_example():
     assert "they lived happily." in out
     assert '{"grammar":' in out  # JSON example preserved verbatim
     assert "{prefix}" not in out and "{completion}" not in out
+
+
+class FakeV5Tokenizer:
+    """transformers>=5: apply_chat_template returns a BatchEncoding, not a raw tensor."""
+
+    def apply_chat_template(self, messages, add_generation_prompt=True,
+                            return_tensors=None, return_dict=False):
+        assert return_dict, "judge must pass return_dict=True to be version-stable"
+        return BatchEncoding({"input_ids": torch.tensor([[1, 2, 3]]),
+                              "attention_mask": torch.tensor([[1, 1, 1]])})
+
+    def decode(self, ids, skip_special_tokens=True):
+        assert ids.tolist() == [9, 9]  # only the newly generated tokens
+        return '{"grammar": 4, "consistency": 3, "completes": 5}'
+
+
+class FakeModel:
+    device = "cpu"
+
+    def generate(self, input_ids=None, attention_mask=None, **kwargs):
+        assert torch.is_tensor(input_ids)  # BatchEncoding passed positionally would crash
+        return torch.cat([input_ids, torch.tensor([[9, 9]])], dim=1)
+
+
+def test_local_judge_score_handles_v5_batchencoding():
+    # Regression: generate(BatchEncoding) raised AttributeError on transformers 5.x.
+    j = LocalQwenJudge.__new__(LocalQwenJudge)  # skip __init__ (no model download)
+    j.template = load_judge_prompt()
+    j.max_new_tokens = 32
+    j.tokenizer = FakeV5Tokenizer()
+    j.model = FakeModel()
+    assert j.score("Once", "upon a time") == {"grammar": 4, "consistency": 3, "completes": 5}
 
 
 def test_fake_judge_protocol_shape():

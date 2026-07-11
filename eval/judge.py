@@ -82,11 +82,15 @@ class LocalQwenJudge:
     def score(self, prefix: str, completion: str) -> dict:
         prompt = fill_prompt(self.template, prefix, completion)
         messages = [{"role": "user", "content": prompt}]
+        # return_dict=True: on transformers>=5 the template call yields a BatchEncoding
+        # either way, and generate() only accepts it unpacked, not positionally.
         inputs = self.tokenizer.apply_chat_template(
-            messages, add_generation_prompt=True, return_tensors="pt"
+            messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
         ).to(self.model.device)
-        out = self.model.generate(inputs, max_new_tokens=self.max_new_tokens, do_sample=False)
-        text = self.tokenizer.decode(out[0, inputs.shape[1]:], skip_special_tokens=True)
+        out = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens,
+                                  do_sample=False)
+        n_in = inputs["input_ids"].shape[1]
+        text = self.tokenizer.decode(out[0, n_in:], skip_special_tokens=True)
         return parse_judge_json(text)
 
 

@@ -30,9 +30,11 @@ of the study. This doc is the short companion: what runs, in what order, and the
   (papermill) starts from a clean disk every time — no persisted `runs/`, no HF cache, so it
   re-downloads everything and can't resume — and it aborts the whole notebook on the first
   error. The workflow assumes a live editor session with *Files only* persistence.
-- **HF downloads are cached across sessions.** `bootstrap()` sets `HF_HOME=/kaggle/working/hf`
-  so the Qwen judge (~15GB) and TinyStories download once and persist; without it they'd be
-  re-pulled every session.
+- **Disk budget: `/kaggle/working` has a ~19.5GiB quota** (the 57.6GB figure is total scratch
+  disk, mostly outside it). It holds `data/` (~1GB) + `runs/` (~2.5GB of `ckpt_latest`
+  checkpoints) — comfortable. The ~15GB Qwen judge deliberately lives in the *ephemeral* HF
+  cache and re-downloads in sessions that judge (calibration / eval), a few minutes each;
+  never point `HF_HOME` into `/kaggle/working` or the sweep will hit the quota.
 - **Never `pip install -r requirements.txt` on Kaggle.** `requirements.txt` pins `torch>=2.12`
   for the local dev env; installing it on Kaggle upgrades Kaggle's torch (2.10) and breaks the
   preinstalled `transformers` with `ImportError: cannot import name '_maybe_view_chunk_cat'`.

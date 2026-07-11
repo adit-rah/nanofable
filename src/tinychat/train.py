@@ -273,9 +273,10 @@ def train_run(
                 "lr": sched.get_last_lr()[0],
                 "timestamp": time.time(),
             })
+        # ckpt_latest only — periodic ckpt_step{N} copies (~15/run, ~36GB over the sweep)
+        # would blow the 19.5GiB /kaggle/working quota; resume needs only the latest.
         if step % ckpt_every == 0 or is_last:
-            save_checkpoint(run_dir, step, tokens_seen, model, opt, sched,
-                            periodic=(step % ckpt_every == 0))
+            save_checkpoint(run_dir, step, tokens_seen, model, opt, sched)
 
     save_checkpoint(run_dir, step, tokens_seen, model, opt, sched)
     open(os.path.join(run_dir, "DONE"), "w").close()
