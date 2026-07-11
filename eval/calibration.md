@@ -9,3 +9,4 @@
 - judge reliable (intra_std < good−bad gap): True
 
 If rank-ordering fails OR intra_std >= good−bad gap, STOP and upgrade the judge before freezing the gate (spec §8).
+- mediocre (TinyStories-33M) mean: 4.378  (addendum)
