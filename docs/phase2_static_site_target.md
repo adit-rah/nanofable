@@ -30,7 +30,7 @@ research metric — it is the deployment cost.
 4. **The page** — single static HTML: type a story opening, the model continues it.
    Honest framing: a story completer, not a chatbot (a chat-tuned variant is phase 3,
    needs dialogue-format fine-tuning data).
-5. **Model switcher (decided 2026-07-12):** the page offers *all* sweep models, not just
+5. **Model switcher (decided 2026-07-11):** the page offers *all* sweep models, not just
    the winner — an interactive frontier. Packed models ship as GitHub Release assets on a
    tagged release; the page discovers them via the `releases/latest` API (CORS-enabled, no
    backend, re-tag to update), lazy-fetches on selection with a progress bar (the byte size
