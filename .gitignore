@@ -13,3 +13,6 @@ runs/
 
 # OS
 .DS_Store
+
+# Local inference testing directory
+local/
