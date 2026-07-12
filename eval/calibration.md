@@ -36,3 +36,17 @@ gate was therefore never valid; this is an instrument correction, not gate tunin
    CI straddling the anchor ⇒ reported as indistinguishable, per the spec's power rule.
 4. The original sampled-policy scores (five runs) are retained in the backup and reported
    alongside the greedy results in the writeup.
+
+### Revision to rule 3 (2026-07-12, still blind — no greedy sweep-model scores computed)
+
+Rule 3's anchor ("TinyStories-1M by fiat") is replaced before any measurement: published
+judge scores (GPT-4, 1–10, 2023) do not transfer to our instrument (Qwen2.5, 0–5, our
+rubric), so no fixed checkpoint can be *declared* the weakest capable one. Instead:
+
+**Anchor rule:** score the published ladder — roneneldan/TinyStories-{1M, 3M, 8M, 28M, 33M}
+— greedy, n=200, through the frozen judge. The anchor is the **smallest checkpoint whose
+mean ≥ 4.0** (the calibrated primary bar). A sweep config is *reference-capable* iff its
+mean greedy judge score ≥ that anchor's mean (CI straddling ⇒ indistinguishable). The full
+ladder is reported in the writeup as the external benchmark line, and no post-2023 work
+lowers the published coherence floor below this family (checked 2026-07-12; see
+docs/related_work.md — stories260K is below coherence, nothing smaller claims it).
