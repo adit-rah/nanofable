@@ -50,3 +50,23 @@ mean greedy judge score ≥ that anchor's mean (CI straddling ⇒ indistinguisha
 ladder is reported in the writeup as the external benchmark line, and no post-2023 work
 lowers the published coherence floor below this family (checked 2026-07-12; see
 docs/related_work.md — stories260K is below coherence, nothing smaller claims it).
+
+### Ladder results & anchor determination (2026-07-12, recorded before any greedy
+### sweep-model score was observed)
+
+- reference (TinyStories-1M, greedy, n=200) mean: 2.423  (95% CI ±0.123)
+- reference (TinyStories-3M, greedy, n=200) mean: 3.330  (95% CI ±0.127)
+- reference (TinyStories-8M, greedy, n=200) mean: 4.232  (95% CI ±0.112)
+- reference (TinyStories-28M, greedy, n=200) mean: 4.447  (95% CI ±0.101)
+- reference (TinyStories-33M, greedy, n=200) mean: 4.378  (95% CI ±0.106)
+
+Rank-ordering is monotone through 28M (2.423 < 3.330 < 4.232 < 4.447; 28M vs 33M CIs
+overlap — a plateau, reported as indistinguishable). 33M-greedy exactly reproduces the
+pre-correction measurement (4.378), confirming instrument consistency across the judge
+token-budget change.
+
+**Anchor = TinyStories-8M (mean 4.232, CI [4.120, 4.344] — clears 4.0 without
+straddling).** The reference-capable line for sweep configs is therefore mean ≥ 4.232,
+with CI straddling of 4.232 reported as indistinguishable. Note the calibrated 4.0 bar
+falls between the published 3M (3.330) and 8M (4.232) checkpoints — "capable" as frozen
+means "closer to 8M-published quality than 3M's".
