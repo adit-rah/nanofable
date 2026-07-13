@@ -70,3 +70,19 @@ straddling).** The reference-capable line for sweep configs is therefore mean �
 with CI straddling of 4.232 reported as indistinguishable. Note the calibrated 4.0 bar
 falls between the published 3M (3.330) and 8M (4.232) checkpoints — "capable" as frozen
 means "closer to 8M-published quality than 3M's".
+
+## Exploratory two-threshold (T1/T2) decomposition (rule set 2026-07-12)
+
+**Labeled post-hoc.** The pre-registered gate (above) is the primary result and it is a
+null. The decomposition splits capability into **T1 = surface fluency** (the rubric's
+grammar axis) and **T2 = state-holding** (the frozen full gate), motivated by the observed
+axis separation in the sweep results (grammar ≫ consistency ≫ completes at every config).
+
+**Blindness status, honestly:** the sweep models' per-axis means had already been observed
+when this rule was set (max grammar 3.83, large_fp16). The T1 bar therefore cannot be
+chosen numerically; it is anchored to reference measurements **not yet taken**: the
+grammar-axis means of the published ladder and of the gold continuations (a re-run of the
+ladder retaining per-axis detail). **T1 rule (frozen before those measurements):** a config
+is T1-capable iff its grammar-axis mean ≥ the grammar-axis mean of the same anchor
+checkpoint selected by the primary anchor rule (TinyStories-8M), CI straddling reported as
+indistinguishable. Gold's grammar mean is reported alongside as the scale ceiling.

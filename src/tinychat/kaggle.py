@@ -178,7 +178,7 @@ def calibrate(ctx: Ctx, use_33m: bool = False, repeats: int = 3) -> None:
 
 def calibrate_reference(ctx: Ctx, model_id: str = "roneneldan/TinyStories-33M",
                         sampled: bool = False, n_prefixes: int | None = None,
-                        judge=None) -> None:
+                        judge=None, detail_path: str | None = None) -> None:
     """Score a published TinyStories reference model through the frozen judge pipeline
     and append the result to calibration.md.
 
@@ -202,7 +202,7 @@ def calibrate_reference(ctx: Ctx, model_id: str = "roneneldan/TinyStories-33M",
 
         judge = LocalQwenJudge()
     mean, half, n = cal.score_reference(judge, model_id, sampled=sampled,
-                                        n_prefixes=n_prefixes)
+                                        n_prefixes=n_prefixes, detail_path=detail_path)
     line = cal.reference_line(model_id, sampled, n, mean, half)
     with open(os.path.join(ctx.repo_dir, "eval/calibration.md"), "a") as f:
         f.write(line + "\n")
@@ -234,13 +234,26 @@ def calibrate_ladder(ctx: Ctx, model_ids: tuple[str, ...] = LADDER,
 
         workers = max(1, torch.cuda.device_count())
     workers = min(workers, len(model_ids))
+    detail_dir = os.path.join(ctx.runs_dir, "ladder_axes")
+    os.makedirs(detail_dir, exist_ok=True)
     if workers == 1:
+        import importlib.util
+
         from eval.judge import LocalQwenJudge
 
         judge = LocalQwenJudge()
         for mid in model_ids:
+            short = mid.split("/")[-1]
             calibrate_reference(ctx, model_id=mid, sampled=sampled,
-                                n_prefixes=n_prefixes, judge=judge)
+                                n_prefixes=n_prefixes, judge=judge,
+                                detail_path=os.path.join(detail_dir,
+                                                         f"{short}.axes.jsonl"))
+        spec = importlib.util.spec_from_file_location(
+            "run_calibration", os.path.join(ctx.repo_dir, "scripts/run_calibration.py"))
+        cal = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cal)
+        cal.score_gold_detailed(judge, os.path.join(detail_dir, "gold.axes.jsonl"),
+                                n_prefixes=n_prefixes)
         return
 
     from huggingface_hub import snapshot_download
@@ -257,7 +270,8 @@ def calibrate_ladder(ctx: Ctx, model_ids: tuple[str, ...] = LADDER,
         if os.path.exists(out_path):
             os.remove(out_path)
         cfg = _json.dumps({"model_ids": list(model_ids[i::workers]), "sampled": sampled,
-                           "n_prefixes": n_prefixes, "out": out_path})
+                           "n_prefixes": n_prefixes, "out": out_path,
+                           "detail_dir": detail_dir, "gold": i == 0})
         logf = open(log_path, "a")
         env = {**os.environ,
                "CUDA_VISIBLE_DEVICES": str(i),

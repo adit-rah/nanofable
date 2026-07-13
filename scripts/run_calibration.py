@@ -66,17 +66,53 @@ def reference_line(model_id: str, sampled: bool, n: int, mean: float, half: floa
             f"{mean:.3f}  (95% CI ±{half:.3f})  (addendum)")
 
 
+def score_set_detailed(judge, prefixes, completion_fn, label: str = "",
+                       detail_path: str | None = None) -> list[dict]:
+    """Like score_set, but keeps per-completion axis scores (for axis-level anchors,
+    e.g. the grammar/T1 analysis). Appends one JSON row per completion to
+    `detail_path` when given."""
+    from eval.judge import AXES
+
+    rows = []
+    f = open(detail_path, "a") if detail_path else None
+    for i, item in enumerate(prefixes, 1):
+        axes = judge.score(item["prefix"], completion_fn(item))
+        row = {"id": item.get("id", i), **{a: axes[a] for a in AXES},
+               "score": per_completion_score(axes)}
+        rows.append(row)
+        if f:
+            f.write(json.dumps(row) + "\n")
+            f.flush()
+        if i % 50 == 0 or i == len(prefixes):
+            mean = statistics.fmean(r["score"] for r in rows)
+            print(f"[{label}] scored {i}/{len(prefixes)} | running mean {mean:.3f}",
+                  flush=True)
+    if f:
+        f.close()
+    return rows
+
+
 def score_reference(judge, model_id: str, sampled: bool = False,
-                    n_prefixes: int | None = None) -> tuple[float, float, int]:
+                    n_prefixes: int | None = None,
+                    detail_path: str | None = None) -> tuple[float, float, int]:
     """Score one published TinyStories checkpoint; returns (mean, ci_half, n)."""
     from tinychat.kaggle import _tinystories_ref_fn
 
     prefixes = _load_prefixes()[:n_prefixes]
     short = model_id.split("/")[-1]
-    scores = score_set(judge, prefixes, _tinystories_ref_fn(model_id, sampled=sampled),
-                       label=f"{short}-{'sampled' if sampled else 'greedy'}")
-    mean, half = mean_and_ci(scores)
+    rows = score_set_detailed(judge, prefixes,
+                              _tinystories_ref_fn(model_id, sampled=sampled),
+                              label=f"{short}-{'sampled' if sampled else 'greedy'}",
+                              detail_path=detail_path)
+    mean, half = mean_and_ci([r["score"] for r in rows])
     return mean, half, len(prefixes)
+
+
+def score_gold_detailed(judge, detail_path: str, n_prefixes: int | None = None) -> None:
+    """Per-axis scores for the gold continuations (T1 anchor needs gold's grammar)."""
+    prefixes = _load_prefixes()[:n_prefixes]
+    score_set_detailed(judge, prefixes, lambda it: it["gold_continuation"],
+                       label="gold-axes", detail_path=detail_path)
 
 
 def main(judge=None, model33m_fn=None, repeats: int = 3):
@@ -136,13 +172,23 @@ if __name__ == "__main__":
 
         _cfg = json.loads(sys.argv[1])
         _judge = LocalQwenJudge()
+        _detail_dir = _cfg.get("detail_dir")
+        if _detail_dir:
+            os.makedirs(_detail_dir, exist_ok=True)
         with open(_cfg["out"], "a") as _f:
             for _mid in _cfg["model_ids"]:
+                _short = _mid.split("/")[-1]
                 _mean, _half, _n = score_reference(
                     _judge, _mid, sampled=_cfg["sampled"],
-                    n_prefixes=_cfg["n_prefixes"])
+                    n_prefixes=_cfg["n_prefixes"],
+                    detail_path=(os.path.join(_detail_dir, f"{_short}.axes.jsonl")
+                                 if _detail_dir else None))
                 _f.write(json.dumps({"model_id": _mid, "mean": _mean,
                                      "ci_half": _half, "n": _n}) + "\n")
                 _f.flush()
+            if _cfg.get("gold") and _detail_dir:
+                score_gold_detailed(_judge,
+                                    os.path.join(_detail_dir, "gold.axes.jsonl"),
+                                    n_prefixes=_cfg["n_prefixes"])
     else:
         main()
