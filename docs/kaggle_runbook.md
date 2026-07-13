@@ -8,7 +8,8 @@ of the study. This doc is the short companion: what runs, in what order, and the
 2. **Calibration (once, before the sweep)** — score good / mediocre / degenerate references
    through the frozen rubric + Qwen2.5-7B judge → `eval/calibration.md`. **Inspect it.**
 3. **Sweep (Phase A)** — train the 16 runs (4 tiers × fp16/ternary × 2 seeds) to 500M tokens.
-4. **Eval (Phase B)** — load the judge once, score the 200 frozen prefixes per run → `eval.json`.
+4. **Eval (Phase B)** — score the 200 frozen prefixes per run → `eval.json`. On T4×2 this
+   runs one judge per GPU in parallel (EVAL_CLAIM markers; logs in `runs/eval_worker{i}.log`).
 5. **Plot** — `frontier.png` (coherence vs total bytes) + the smallest-capable headline.
 6. **Writeup** — fill `docs/writeup.md`.
 

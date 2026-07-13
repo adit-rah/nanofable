@@ -68,6 +68,42 @@ def test_evaluate_run_counts_parse_failures(trained_run):
     assert result["n_parse_failures"] == 3
 
 
+def test_evaluate_pending_scores_done_runs_and_respects_claims(tmp_path, small_cfg,
+                                                               data_paths, monkeypatch):
+    from tinychat.sweep import claim_run, run_dir_for
+
+    train_path, val_path = data_paths
+    runs_root = str(tmp_path / "runs")
+    # Two DONE runs (real tiny checkpoints), one of them already eval-claimed elsewhere.
+    for seed in (0, 1):
+        rd = run_dir_for(runs_root, "tiny", "fp16", seed)
+        train_run(small_cfg, "fp16", seed=seed, run_dir=rd,
+                  train_path=train_path, val_path=val_path,
+                  total_tokens=small_cfg.ctx * 2, tokens_per_step=small_cfg.ctx,
+                  eval_every=1000, eval_batches=2, ckpt_every=1000)
+        claim_run(rd)  # leftover *training* claim must not block eval
+    claimed = run_dir_for(runs_root, "tiny", "fp16", 1)
+    claim_run(claimed, name="EVAL_CLAIM")  # another eval worker owns this one
+
+    prefixes_path = str(tmp_path / "prefixes.jsonl")
+    with open(prefixes_path, "w") as f:
+        f.write(json.dumps({"id": 0, "prefix": "Once upon a time",
+                            "gold_continuation": " a cat."}) + "\n")
+    monkeypatch.setattr(run_eval, "PREFIXES", prefixes_path)
+    monkeypatch.setattr(run_eval, "TOKENIZER",
+                        os.path.join(os.path.dirname(train_path), "tok.json"))
+
+    done = run_eval.evaluate_pending(runs_root, judge=RecordingJudge(), claim=True,
+                                     max_new_tokens=8)
+
+    assert [os.path.basename(d) for d in done] == ["tiny_fp16_0"]
+    assert os.path.exists(os.path.join(runs_root, "tiny_fp16_0", "eval.json"))
+    assert not os.path.exists(os.path.join(claimed, "eval.json"))
+    # Idempotent: nothing left for this worker on a second pass.
+    assert run_eval.evaluate_pending(runs_root, judge=RecordingJudge(), claim=True,
+                                     max_new_tokens=8) == []
+
+
 def test_evaluate_run_passes_decoding_params_to_generate(trained_run, monkeypatch):
     import tinychat.generate as gen_mod
 

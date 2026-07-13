@@ -100,7 +100,45 @@ def evaluate_run(run_dir: str, judge=None, max_new_tokens: int = 200,
     return result
 
 
+def evaluate_pending(runs_root: str, judge=None, claim: bool = False,
+                     **eval_kwargs) -> list[str]:
+    """Score every DONE run under `runs_root` that lacks an eval.json.
+
+    `claim=True` makes the loop safe to run in multiple worker processes at once (each
+    run is scored by exactly one worker, via an EVAL_CLAIM marker — distinct from the
+    training CLAIM). The judge is created once if not supplied. Returns the run dirs
+    scored by this call.
+    """
+    from tinychat.sweep import claim_run, run_dir_for, sweep_matrix
+
+    if judge is None:
+        from eval.judge import LocalQwenJudge
+
+        judge = LocalQwenJudge()
+    done = []
+    for tier, prec, seed in sweep_matrix():
+        rd = run_dir_for(runs_root, tier, prec, seed)
+        if not os.path.exists(os.path.join(rd, "DONE")):
+            print("skip (not trained):", os.path.basename(rd), flush=True)
+            continue
+        if os.path.exists(os.path.join(rd, "eval.json")):
+            print("already evaluated:", os.path.basename(rd), flush=True)
+            continue
+        if claim and not claim_run(rd, name="EVAL_CLAIM"):
+            continue
+        r = evaluate_run(rd, judge=judge, **eval_kwargs)
+        print(os.path.basename(rd), "mean", round(r["mean"], 3),
+              f"CI [{r['ci_low']:.3f}, {r['ci_high']:.3f}]",
+              f"parse_failures {r['n_parse_failures']}", flush=True)
+        done.append(rd)
+    return done
+
+
 if __name__ == "__main__":
-    out = evaluate_run(sys.argv[1])
-    print(f"{out['run_dir']}: mean={out['mean']:.3f} "
-          f"CI=[{out['ci_low']:.3f}, {out['ci_high']:.3f}]")
+    if sys.argv[1].lstrip().startswith("{"):  # eval-worker mode (see kaggle.evaluate_all)
+        _cfg = json.loads(sys.argv[1])
+        evaluate_pending(_cfg["runs_root"], claim=True, **_cfg["eval_kwargs"])
+    else:
+        out = evaluate_run(sys.argv[1])
+        print(f"{out['run_dir']}: mean={out['mean']:.3f} "
+              f"CI=[{out['ci_low']:.3f}, {out['ci_high']:.3f}]")

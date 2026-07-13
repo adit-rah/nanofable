@@ -41,12 +41,14 @@ def run_dir_for(runs_root: str, tier: str, precision: str, seed: int) -> str:
     return os.path.join(runs_root, f"{tier}_{precision}_{seed}")
 
 
-def claim_run(run_dir: str) -> bool:
-    """Atomically claim a run for this process (O_EXCL create of CLAIM). Claims only
-    coordinate workers within one session; the parent clears stale ones at startup."""
+def claim_run(run_dir: str, name: str = "CLAIM") -> bool:
+    """Atomically claim a run for this process (O_EXCL create of the `name` marker).
+    Training and eval use distinct marker names so leftover training claims never block
+    eval workers. Claims only coordinate workers within one session; the parent clears
+    stale ones at startup."""
     os.makedirs(run_dir, exist_ok=True)
     try:
-        fd = os.open(os.path.join(run_dir, "CLAIM"),
+        fd = os.open(os.path.join(run_dir, name),
                      os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
         return False

@@ -177,7 +177,8 @@ def calibrate(ctx: Ctx, use_33m: bool = False, repeats: int = 3) -> None:
 
 
 def calibrate_reference(ctx: Ctx, model_id: str = "roneneldan/TinyStories-33M",
-                        sampled: bool = False, n_prefixes: int | None = None) -> None:
+                        sampled: bool = False, n_prefixes: int | None = None,
+                        judge=None) -> None:
     """Score a published TinyStories reference model through the frozen judge pipeline
     and append the result to calibration.md.
 
@@ -186,18 +187,20 @@ def calibrate_reference(ctx: Ctx, model_id: str = "roneneldan/TinyStories-33M",
     `sampled=True` decodes with the original sweep eval policy (temp 1.0 / top_k 40)
     instead of greedy — it measures how much of the gap between a reference model and the
     gate is the decoding policy, not the model. `n_prefixes` caps the set for a quick
-    diagnostic pass; the anchor itself must use the full 200.
+    diagnostic pass; the anchor itself must use the full 200. Pass `judge` to reuse one
+    loaded judge across a ladder of reference models (it loads ~5GB per call otherwise).
     """
     import importlib.util
-
-    from eval.judge import LocalQwenJudge
 
     spec = importlib.util.spec_from_file_location(
         "run_calibration", os.path.join(ctx.repo_dir, "scripts/run_calibration.py"))
     cal = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cal)
 
-    judge = LocalQwenJudge()
+    if judge is None:
+        from eval.judge import LocalQwenJudge
+
+        judge = LocalQwenJudge()
     prefixes = cal._load_prefixes()[:n_prefixes]
     short = model_id.split("/")[-1]
     decode = "sampled temp1.0/topk40" if sampled else "greedy"
@@ -215,30 +218,80 @@ def calibrate_reference(ctx: Ctx, model_id: str = "roneneldan/TinyStories-33M",
 calibrate_33m = calibrate_reference
 
 
-def evaluate_all(ctx: Ctx, **eval_kwargs) -> None:
-    """Load the judge once and score every finished run that lacks an eval.json.
+def evaluate_all(ctx: Ctx, workers: int | None = None, poll_s: int = 60,
+                 **eval_kwargs) -> None:
+    """Score every finished run that lacks an eval.json, one judge per GPU.
 
-    `eval_kwargs` (e.g. temperature/top_k) pass through to `evaluate_run` → `generate`,
-    so the eval decoding policy is settable from the notebook without a code push.
+    With multiple GPUs, spawns one eval worker subprocess per GPU (CUDA_VISIBLE_DEVICES
+    pins each; EVAL_CLAIM markers keep runs exclusive; logs in runs/eval_worker{i}.log).
+    Single GPU falls back to one in-process pass. `eval_kwargs` (e.g. temperature/top_k)
+    pass through to `evaluate_run` → `generate`, so the eval decoding policy is settable
+    from the notebook without a code push.
     """
-    from eval.judge import LocalQwenJudge
-    from eval.run_eval import evaluate_run
+    import json as _json
+    import subprocess
+    import sys as _sys
+    import time
 
-    from tinychat.sweep import sweep_matrix
+    from eval.run_eval import evaluate_pending
 
-    judge = LocalQwenJudge()
+    from tinychat.sweep import _tail_line, run_dir_for, sweep_matrix
+
+    if workers is None:
+        import torch
+
+        workers = max(1, torch.cuda.device_count())
+    if workers == 1:
+        evaluate_pending(ctx.runs_dir, **eval_kwargs)
+        return
+
+    # Pre-download the judge once so parallel workers don't race the 15GB fetch.
+    from huggingface_hub import snapshot_download
+
+    snapshot_download("Qwen/Qwen2.5-7B-Instruct")
     for tier, prec, seed in sweep_matrix():
-        rd = os.path.join(ctx.runs_dir, f"{tier}_{prec}_{seed}")
-        if not os.path.exists(os.path.join(rd, "DONE")):
-            print("skip (not trained):", os.path.basename(rd))
-            continue
-        if os.path.exists(os.path.join(rd, "eval.json")):
-            print("already evaluated:", os.path.basename(rd))
-            continue
-        r = evaluate_run(rd, judge=judge, **eval_kwargs)
-        print(os.path.basename(rd), "mean", round(r["mean"], 3),
-              f"CI [{r['ci_low']:.3f}, {r['ci_high']:.3f}]",
-              f"parse_failures {r['n_parse_failures']}")
+        stale = os.path.join(run_dir_for(ctx.runs_dir, tier, prec, seed), "EVAL_CLAIM")
+        if os.path.exists(stale):
+            os.remove(stale)
+
+    cfg = _json.dumps({"runs_root": ctx.runs_dir, "eval_kwargs": eval_kwargs})
+    src_root = os.path.join(ctx.repo_dir, "src")
+    procs, log_paths, log_files = [], [], []
+    for i in range(workers):
+        log_path = os.path.join(ctx.runs_dir, f"eval_worker{i}.log")
+        logf = open(log_path, "a")
+        env = {**os.environ,
+               "CUDA_VISIBLE_DEVICES": str(i),
+               "PYTHONPATH": os.pathsep.join(
+                   [src_root, ctx.repo_dir, os.environ.get("PYTHONPATH", "")])}
+        procs.append(subprocess.Popen(
+            [_sys.executable, "-m", "eval.run_eval", cfg], env=env, cwd=ctx.repo_dir,
+            stdout=logf, stderr=subprocess.STDOUT))
+        log_paths.append(log_path)
+        log_files.append(logf)
+
+    last = [""] * workers
+    try:
+        while any(p.poll() is None for p in procs):
+            time.sleep(poll_s)
+            for i, log_path in enumerate(log_paths):
+                line = _tail_line(log_path)
+                if line and line != last[i]:
+                    print(f"[gpu{i}] {line}", flush=True)
+                    last[i] = line
+    finally:
+        for p in procs:
+            if p.poll() is None:
+                p.terminate()
+        for f in log_files:
+            f.close()
+
+    failed = [i for i, p in enumerate(procs) if p.returncode != 0]
+    if failed:
+        raise RuntimeError(
+            f"eval worker(s) {failed} failed — see "
+            + ", ".join(log_paths[i] for i in failed)
+            + " (scored runs keep their eval.json; re-run to resume)")
 
 
 def save_deliverables(ctx: Ctx, out: str = "/kaggle/working/deliverables") -> str:

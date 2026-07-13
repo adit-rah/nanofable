@@ -57,6 +57,14 @@ def test_claim_run_is_exclusive(tmp_path):
     assert sweep.claim_run(run_dir) is False  # second claimant loses
 
 
+def test_claim_run_markers_are_independent(tmp_path):
+    # Training leaves CLAIM files behind; eval claims must not collide with them.
+    run_dir = str(tmp_path / "tiny_fp16_0")
+    assert sweep.claim_run(run_dir) is True
+    assert sweep.claim_run(run_dir, name="EVAL_CLAIM") is True
+    assert sweep.claim_run(run_dir, name="EVAL_CLAIM") is False
+
+
 def test_run_sweep_with_claim_skips_claimed_runs(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(sweep, "train_run",
