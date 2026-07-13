@@ -1,8 +1,11 @@
 # Phase 2 target — serverless in-browser inference from a static site
 
-**Status:** declared goal, not yet in scope. Phase 1 (the spec's sweep + gate + frontier plot)
-completes first and *selects the artifact*: the smallest capable checkpoint is the model that
-ships. This doc records what "shippable" means so phase 1 decisions stay compatible with it.
+**Status:** demo built early (2026-07-12) against stand-in checkpoints — see
+`docs/demo_site.md`. Deliverables 1–5 below exist in `src/nanofable/pack.py` + `web/`, with
+one deliberate simplification: model discovery uses a committed static `web/manifest.json`
+instead of the `releases/latest` API for now (swap-in is isolated to `loadManifest()` in
+`web/js/pack.js`). Phase 1 (the spec's sweep + gate + frontier plot) still *selects the
+artifact*: when the sweep names winners, their packs replace the stand-ins.
 
 ## The goal
 

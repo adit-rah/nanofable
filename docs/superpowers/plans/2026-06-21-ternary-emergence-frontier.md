@@ -39,7 +39,7 @@ docs/
   design_notes.md              # rationale: arch, ctx decision, LR policy, byte-accounting note
   byte_accounting.md           # WHAT count_bytes computes + the §6 derivation
   writeup.md                   # final 1–2 page finding (Definition of Done #2)
-src/tinychat/
+src/nanofable/
   config.py                    # ModelConfig, TierConfig, TIERS dict
   tokenizer.py                 # train + load BPE(4k)
   rope.py                      # RoPE precompute + apply
@@ -77,14 +77,14 @@ Phases are ordered by dependency. Each phase ends with working, independently te
 ## Phase 0 — Scaffold, config, docs
 
 ### Task 0.1: Repo scaffold + deps + frozen config doc
-**Files:** Create `pyproject.toml` (or `requirements.txt`), `src/tinychat/__init__.py`, `docs/frozen_config.md`, `docs/design_notes.md`, `tests/__init__.py`.
+**Files:** Create `pyproject.toml` (or `requirements.txt`), `src/nanofable/__init__.py`, `docs/frozen_config.md`, `docs/design_notes.md`, `tests/__init__.py`.
 
 - [ ] **Step 1:** Create `requirements.txt`: `torch`, `tokenizers`, `datasets`, `transformers`, `accelerate`, `bitsandbytes`, `matplotlib`, `numpy`, `pytest`. Pin majors.
 - [ ] **Step 2:** Write `docs/frozen_config.md` = the **Global Constraints** section above verbatim. Write `docs/design_notes.md` capturing the three Open Items and the ctx-conflict resolution.
 - [ ] **Step 3:** `pytest -q` (collects nothing yet) → exit 0. **Commit:** `chore: scaffold repo + frozen config doc`.
 
 ### Task 0.2: Config objects
-**Files:** Create `src/tinychat/config.py`, `tests/test_config.py`.
+**Files:** Create `src/nanofable/config.py`, `tests/test_config.py`.
 **Interfaces — Produces:**
 ```python
 @dataclass(frozen=True)
@@ -113,7 +113,7 @@ def test_head_divides_embd():
 ## Phase 1 — Tokenizer
 
 ### Task 1.1: Train + load 4k BPE
-**Files:** Create `src/tinychat/tokenizer.py`, `scripts/build_tokenizer.py`, `tests/test_tokenizer.py`.
+**Files:** Create `src/nanofable/tokenizer.py`, `scripts/build_tokenizer.py`, `tests/test_tokenizer.py`.
 **Interfaces — Produces:**
 ```python
 def train_tokenizer(texts: Iterable[str], vocab_size: int = 4096, save_path: str) -> None
@@ -130,12 +130,12 @@ def load_tokenizer(path: str) -> Tokenizer        # HF tokenizers Tokenizer
 ## Phase 2 — Model + BitLinear
 
 ### Task 2.1: RoPE
-**Files:** Create `src/tinychat/rope.py`, `tests/test_rope.py`.
+**Files:** Create `src/nanofable/rope.py`, `tests/test_rope.py`.
 **Interfaces — Produces:** `build_rope_cache(head_dim, ctx, base=10000) -> (cos, sin)`; `apply_rope(q, k, cos, sin) -> (q,k)` (shapes `[B,H,T,Dh]`).
 - [ ] **Step 1 (failing test):** rotation preserves norm (`‖apply_rope(q)‖ ≈ ‖q‖`); relative-position property: dot product of rotated q_t,k_s depends only on `t-s` for a constant vector. **Step 2:** FAIL. **Step 3:** Implement. **Step 4:** PASS. **Step 5:** Commit `feat: RoPE`.
 
 ### Task 2.2: BitLinear with STE  *(spec non-negotiable — full code)*
-**Files:** Create `src/tinychat/bitlinear.py`, `tests/test_bitlinear.py`.
+**Files:** Create `src/nanofable/bitlinear.py`, `tests/test_bitlinear.py`.
 **Interfaces — Produces:** `class BitLinear(nn.Module)` with `weight` latent param (fp32), `bias=None`, `.quantized_weight()` returning `w_q` and `.scale()` returning the fp16 scalar; forward uses STE.
 - [ ] **Step 1 (failing tests):**
 ```python
@@ -182,7 +182,7 @@ class BitLinear(nn.Module):
 - [ ] **Step 4:** PASS. **Step 5:** Commit `feat: BitLinear + STE`.
 
 ### Task 2.3: RMSNorm, SwiGLU, Block, Transformer, build_model
-**Files:** Create `src/tinychat/model.py`, `tests/test_model.py`.
+**Files:** Create `src/nanofable/model.py`, `tests/test_model.py`.
 **Interfaces — Produces:**
 ```python
 def build_model(cfg: ModelConfig, precision: Literal["fp16","ternary"]) -> Transformer
@@ -199,7 +199,7 @@ def test_forward_shapes():
     logits, loss = m(idx, idx)
     assert logits.shape == (2, 16, 4096) and loss.ndim == 0
 def test_precision_swaps_linears():
-    from tinychat.bitlinear import BitLinear
+    from nanofable.bitlinear import BitLinear
     mt = build_model(TIERS["tiny"], "ternary")
     assert any(isinstance(x, BitLinear) for x in mt.modules())
     mf = build_model(TIERS["tiny"], "fp16")
@@ -209,7 +209,7 @@ def test_head_tied_to_embedding():
     assert m.lm_head.weight is m.tok_emb.weight
 def test_embeddings_never_quantized():
     mt = build_model(TIERS["tiny"], "ternary")
-    from tinychat.bitlinear import BitLinear
+    from nanofable.bitlinear import BitLinear
     assert not isinstance(mt.tok_emb, BitLinear)
 ```
 - [ ] **Step 2:** FAIL. **Step 3:** Implement (pre-norm block: `x += attn(norm(x))`, `x += mlp(norm(x))`; causal mask; RoPE on q,k; SwiGLU `down(silu(gate(x))*up(x))`; tie head). **Step 4:** PASS. **Step 5:** Commit `feat: transformer + precision-switchable build_model`.
@@ -219,7 +219,7 @@ def test_embeddings_never_quantized():
 ## Phase 3 — Byte accounting  *(spec non-negotiable — headline depends on it)*
 
 ### Task 3.1: count_bytes
-**Files:** Create `src/tinychat/bytes.py`, `docs/byte_accounting.md`, `tests/test_bytes.py`.
+**Files:** Create `src/nanofable/bytes.py`, `docs/byte_accounting.md`, `tests/test_bytes.py`.
 **Interfaces — Produces:**
 ```python
 def count_bytes(model: Transformer, precision: str) -> dict
@@ -239,7 +239,7 @@ def test_fp16_total_is_two_bytes_per_param():
     assert count_bytes(m, "fp16")["total"] == 2 * n
 def test_ternary_block_uses_1p58():
     mt = build_model(TIERS["small"], "ternary")
-    from tinychat.bitlinear import BitLinear
+    from nanofable.bitlinear import BitLinear
     nq = sum(l.weight.numel() for l in mt.modules() if isinstance(l, BitLinear))
     assert count_bytes(mt, "ternary")["block_bytes"] == nq * 1.58 / 8
 def test_ternary_smaller_than_fp16_with_4k_vocab():
@@ -249,7 +249,7 @@ def test_ternary_smaller_than_fp16_with_4k_vocab():
     assert bt < bf   # sanity: the whole experiment depends on this being true at 4k vocab
 def test_scale_bytes_counts_every_quantized_layer():
     mt = build_model(TIERS["tiny"], "ternary")
-    from tinychat.bitlinear import BitLinear
+    from nanofable.bitlinear import BitLinear
     nlayers = sum(isinstance(l, BitLinear) for l in mt.modules())
     assert count_bytes(mt, "ternary")["scale_bytes"] == nlayers * 2
 ```
@@ -260,7 +260,7 @@ def test_scale_bytes_counts_every_quantized_layer():
 ## Phase 4 — Data pipeline
 
 ### Task 4.1: Tokenize TinyStories to memmap shards + batch iterator
-**Files:** Create `src/tinychat/data.py`, `scripts/build_dataset.py`, `tests/test_data.py`.
+**Files:** Create `src/nanofable/data.py`, `scripts/build_dataset.py`, `tests/test_data.py`.
 **Interfaces — Produces:**
 ```python
 def build_token_memmap(split: str, tokenizer, out_path: str) -> int  # returns n_tokens (uint16)
@@ -275,12 +275,12 @@ def batch_iterator(memmap_path, ctx, tokens_per_step, seed) -> Iterator[(x,y)]  
 ## Phase 5 — Training loop (seedable, hard-kill resumable, CSV, PPL)
 
 ### Task 5.1: FLOPs + seeding helpers
-**Files:** Create `src/tinychat/flops.py`, add `set_seed` to `train.py`, `tests/test_flops.py`.
+**Files:** Create `src/nanofable/flops.py`, add `set_seed` to `train.py`, `tests/test_flops.py`.
 **Interfaces — Produces:** `flops(n_params: int, n_tokens: int) -> float  # 6*N*T`; `set_seed(seed)` seeds python/numpy/torch+cuda.
 - [ ] **Step 1 (failing test):** `flops(10, 100) == 6000`. **Step 2:** FAIL. **Step 3:** Implement. **Step 4:** PASS. **Step 5:** Commit `feat: flops + seeding`.
 
 ### Task 5.2: Checkpoint save/load (atomic, survives hard kill)
-**Files:** Create checkpoint helpers in `src/tinychat/train.py`, `tests/test_checkpoint.py`.
+**Files:** Create checkpoint helpers in `src/nanofable/train.py`, `tests/test_checkpoint.py`.
 **Interfaces — Produces:**
 ```python
 def save_checkpoint(run_dir, step, tokens_seen, model, opt, sched, rng_state) -> None  # atomic
@@ -372,7 +372,7 @@ def test_ci_straddle_flagged():
 - [ ] **Step 2:** FAIL. **Step 3:** Implement (PPL threshold = `1.5*best_fp16_ppl`; CI via t/normal on N=200). **Step 4:** PASS. **Step 5:** Commit `feat: capability gate + CI`.
 
 ### Task 6.5: Eval runner (completions → judge → per-config scores)
-**Files:** Create `src/tinychat/generate.py`, `eval/run_eval.py`, `tests/test_generate.py`.
+**Files:** Create `src/nanofable/generate.py`, `eval/run_eval.py`, `tests/test_generate.py`.
 **Interfaces — Produces:**
 ```python
 def generate(model, tokenizer, prefix: str, max_new_tokens=200, seed=0) -> str

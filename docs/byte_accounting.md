@@ -1,7 +1,7 @@
 # Byte Accounting (`count_bytes`)
 
 **What it is for:** the x-axis of the headline plot is *total model size in bytes*, packed
-honestly. `count_bytes(model, precision)` (`src/tinychat/bytes.py`) is the single tested
+honestly. `count_bytes(model, precision)` (`src/nanofable/bytes.py`) is the single tested
 function that defines it. The whole result depends on it being correct, so it is pinned to
 spec §6 verbatim and covered by `tests/test_bytes.py`.
 
