@@ -93,6 +93,50 @@ body {
 .icon-btn:disabled { color: var(--faded); cursor: default; border-color: var(--line); }
 .icon-btn.done { color: var(--gilt); }
 
+/* ---- install button: hover/focus explainer ---- */
+
+.install-wrap { position: relative; }
+
+.install-help {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 19rem;
+  max-width: calc(100vw - 2.5rem);
+  padding: 0.7rem 0.8rem;
+  background: var(--vellum);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(46, 42, 36, 0.14);
+  z-index: 30;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s;
+}
+.install-wrap:hover .install-help,
+.install-wrap:focus-within .install-help {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.install-help p { margin: 0 0 0.45rem; }
+.install-help p:last-child { margin-bottom: 0; }
+.install-help .ih-title { font-weight: 600; }
+.install-help .ih-note { color: var(--faded); }
+.install-help code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  background: var(--parchment);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.05rem 0.25rem;
+}
+
 /* ---- main / hero / transcript ---- */
 
 #main {
@@ -453,6 +497,7 @@ body.generating .send .ic-quill { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .story.streaming::after { animation: none; }
   .progress-fill { transition: none; }
+  .install-help { transition: none; transform: none; }
 }
 
 @media (max-width: 540px) {

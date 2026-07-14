@@ -15,11 +15,19 @@
 <body>
   <header class="site-head">
     <div class="mark">nanofable<span class="mark-sub"> · pocket storyteller</span></div>
-    <button id="install-btn" class="icon-btn" aria-label="Install all models" title="Install all models">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-      </svg>
-    </button>
+    <div class="install-wrap">
+      <button id="install-btn" class="icon-btn" aria-label="Install all models" aria-describedby="install-help">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+      </button>
+      <div id="install-help" class="install-help" role="tooltip">
+        <p class="ih-title">Install all models</p>
+        <p>Fetches every model once and keeps them in your browser's <b>Cache Storage</b>, so they open instantly next time and work with no connection.</p>
+        <p class="ih-note">They stay put across reloads, including a hard refresh. To clear them, run
+          <code>caches.delete("nanofable-models")</code> in the console, or open DevTools &rsaquo; Application &rsaquo; Cache Storage.</p>
+      </div>
+    </div>
   </header>
 
   <main id="main">
