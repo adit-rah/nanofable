@@ -87,7 +87,34 @@ The more interesting part is what *doesn't* keep pace. `large_fp16` writes near-
 
 **1. Coherence has a pecking order, and it looks universal.** grammar > consistency > completes-sensibly. All 8 sweep configs. All 5 published TinyStories checkpoints. And the real, human-written gold text (4.74 / 4.68 / 4.29). Fourteen out of fourteen, no exceptions. Models learn to shape a sentence long before they learn to hold state across sentences, and landing an ending arrives last. Even human prose tilts the same way, which suggests this is the shape of the task rather than an artifact of our models being small.
 
-**2. Ternary taxes state more than syntax.** This is my favorite result here. At the large tier, going ternary costs 0.85 on grammar but **1.43 and 1.44** on consistency and completes, so roughly **1.7x the cost on the state-holding axes**. Ternary doesn't degrade a model evenly. It seems to take the structured, longer-range machinery first and leave surface fluency relatively intact. That helps explain *why* ternary is behind on bytes here, and it's a useful hint about where the bits are actually going.
+**2. Ternary is not a different kind of model. It is the same model at a worse perplexity.** This is my favorite result here, and it is not the one I expected to find.
+
+Sort all eight configs by validation perplexity and ignore precision entirely:
+
+| config | val PPL | grammar | consistency | completes |
+|--------|--------:|--------:|------------:|----------:|
+| large_fp16      |  5.67 | 3.83 | 3.23 | 2.26 |
+| medium_fp16     |  6.34 | 3.77 | 3.15 | 2.17 |
+| small_fp16      |  8.76 | 3.33 | 2.41 | 1.41 |
+| **large_ternary**   | 13.35 | 2.98 | 1.80 | 0.82 |
+| tiny_fp16       | 15.92 | 2.85 | 1.67 | 0.69 |
+| **medium_ternary**  | 18.09 | 2.57 | 1.39 | 0.42 |
+| **small_ternary**   | 30.04 | 2.53 | 1.38 | 0.42 |
+| tiny_ternary    | 53.60 | 1.91 | 0.70 | 0.10 |
+
+Every column falls monotonically, and the ternary rows slot in *between* the fp16 rows without disturbing the pattern at all. Line up the two configs that happen to land at similar perplexity and the axis scores move as a rigid block:
+
+```
+large_ternary  ppl 13.35  ->  2.98 / 1.80 / 0.82
+tiny_fp16      ppl 15.92  ->  2.85 / 1.67 / 0.69
+                deltas:      +0.13 / +0.13 / +0.13
+```
+
+Identical on all three axes. **Coherence, and every axis of it, is a function of validation perplexity, and precision does not enter.** A ternary model behaves exactly like an fp16 model that happens to have the same perplexity.
+
+I originally read this data the other way, and it is worth saying why I was wrong, because the trap is a natural one. Comparing ternary against fp16 *at equal parameters*, ternary looks like it damages the state-holding axes about 1.7x harder than grammar, which is a tidy story about quantization eating long-range structure first. But at equal parameters ternary simply *is* a worse model, and by finding 1 the axes always degrade at different rates as quality drops. The apparent "state tax" was the pecking order, not a property of ternary. Controlling for perplexity makes it vanish.
+
+Which is a much better result: ternary's coherence deficit *is* its perplexity deficit. Nothing more exotic is going on. Fix the perplexity and the coherence follows.
 
 **3. Quantized training is data-hungrier, and the appetite grows with scale.** Every run in this sweep was still learning when the tokens ran out. Here's the val-PPL drop over the *final 20%* of tokens, by which point the cosine has decayed to 10% of peak LR and a converged model should be nearly flat:
 
@@ -109,7 +136,9 @@ You can see both halves of this in the curves:
 
 **4. And no, they didn't overfit.** That's the right-hand panel, and it's worth a moment because it rules out the obvious alternative explanation. The generalization gap sits at roughly 0.05 nats for every config, a val/train perplexity ratio of about 1.05, and it never opens up. It's flat across a 20x range of model size and identical across both precisions. Nobody is memorizing; these models are underfitting, which is exactly what you'd expect from curves that are still falling when the data runs out.
 
-That has a second consequence worth naming. TernaryLM framed its ~2x worse perplexity as ternary behaving like an implicit regularizer, and it's a tidy story. **We don't see it.** If ternary were regularizing, its generalization gap should be *smaller* than fp16's. Ours is flat, and if anything a hair larger (0.049 vs 0.045 averaged over tiers, which is within noise). Ternary's worse perplexity here isn't a regularization tradeoff at all. It's just underfitting, and the fix is data, not a smaller model.
+That has a second consequence worth naming. TernaryLM framed its ~2x worse perplexity as ternary behaving like an implicit regularizer, and it's a tidy story. **We don't see it.** If ternary were regularizing, its generalization gap should be *smaller* than fp16's. Ours is flat, and if anything a hair larger (0.049 vs 0.045 averaged over tiers, which is within noise). Ternary's worse perplexity here isn't a regularization tradeoff at all. It's just underfitting.
+
+One caveat that will matter later: this is the gap after roughly **one pass** over the data. It says nothing about what happens after twenty, which is exactly where we're headed next.
 
 ## Where that leaves us on the ladder
 
@@ -160,11 +189,19 @@ The gate still earned its keep. `medium_fp16` and `large_fp16` both sail through
 
 ### what's holding us under the bar
 
-The **500M-token budget** is the prime suspect, and finding 3 is the evidence: every run, both arms, was still descending when the tokens ran out. Not one model in this sweep trained to convergence. We're reporting where eight models had *gotten to* at 500M tokens, not where they were headed, and the ternary arm was furthest from done. That's an encouraging thing to be wrong about, because it's the cheapest possible fix.
+We know. It's **epochs**, and the arithmetic is embarrassingly simple.
 
-Two other suspects, both easy to test, and the harness is already built to test them:
+Tokenized with our 4k vocab, the entire TinyStories training set is **485,818,247 tokens**. Our budget was 500M. So every model in this sweep saw the data almost exactly **once** (1.03 epochs), and finding 3 says all of them were still descending when we stopped.
 
-- the **4k vocab**, which makes every token a harder prediction than the published models' 50k.
+The TinyStories authors trained their published models for about **20 epochs** (per Eldan, on the same `TinyStories-train.txt`). That's roughly **10 billion tokens** through our tokenizer. We gave ours 500 million.
+
+So the right way to say this is not "we ran out of data." The data is provably sufficient: **TinyStories-8M clears the gate at 4.232, on this exact corpus**, with 3.5x fewer parameters than our best model. We just never trained long enough to use it. We built a careful instrument, pointed it at the right question, and then ran the models for 5% of the training the reference models got.
+
+That is a genuinely cheering thing to be wrong about, because it means the finding stands and the fix is known. It also sharpens the ternary result: at 1/20th of the necessary training, the arm that converges more slowly is naturally the one that looks worse.
+
+Two secondary suspects remain, and the harness is already built to test them:
+
+- the **4k vocab**, which makes every token a harder prediction than the published models' 50k, so a fixed token budget buys less learning. The decision that made the byte accounting honest may carry a cost we hadn't priced.
 - the **shared 3e-4 LR**, which may suit one arm better than the other.
 
 ## the freeze that caught its own bug
@@ -246,6 +283,10 @@ One caveat worth stating plainly. Ternary is cheaper to ship and *more* expensiv
 
 The frontier question has an answer. The capability question doesn't yet, and the space between those two is basically the roadmap.
 
-Push the token budget first. Nothing converged, every arm was still descending at 500M tokens, and ternary was furthest from done, so that single experiment improves the capability question and the fairness of the ternary comparison at the same time. Train long, see whether the fp16 curve crosses 4.0 and where, and see how much of the gap ternary closes once it gets the tokens it was asking for. Then add a 2-bit arm: ParetoQ found 2-bit and ternary roughly tied at large scale, which makes the tiny-scale comparison the open and interesting one, and a sharper target than the 4-bit idea we started with.
+**Train for the full 20 epochs.** That's the whole first item, and it now has a number on it: roughly **10B tokens**, matching what the published TinyStories models got, instead of the 500M we gave ours. That one change tests everything at once. Does the fp16 curve cross 4.0, and where? Does ternary close the gap once it gets the training it was visibly still asking for? And since twenty passes over the same corpus is where memorization finally becomes plausible, the train/val gap gets logged every eval and a widening gap becomes the stop signal, which turns the overfitting question into a measurement rather than a hope.
+
+Extrapolating the current curves is sobering and worth stating up front so it can be checked against reality later: the power-law fit says `large_fp16` reaches only about **3.8 even at 2B tokens**, so the gate may need most of that 10B. If the prediction is wrong, that's a finding too.
+
+Then add a 2-bit arm: ParetoQ found 2-bit and ternary roughly tied at large scale, which makes the tiny-scale comparison the open and interesting one, and a sharper target than the 4-bit idea we started with.
 
 Then the big one, the question all of this is really pointing at. The emergence floor is a property of *the distribution*, not of English. TinyStories engineered a world simple enough for ~1M params. Constrain that world harder and the floor should slide down with it. How far down does it go? That's the fun part, and we're only just getting to it.
