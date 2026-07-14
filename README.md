@@ -7,7 +7,7 @@
 <p><i>how small can English get?</i></p>
 
 <p>
-  <b><a href="https://adit-rah.github.io/nanofable/">✒️ Write a story with Bar'd</a></b>
+  <b><a href="https://adit-rah.github.io/nanofable/"> Write a story with Bar'd</a></b>
   &nbsp;·&nbsp;
   <a href="https://huggingface.co/spaces/adrahmana/nanofable">mirror on Hugging Face</a>
   &nbsp;·&nbsp;
@@ -83,7 +83,7 @@ Read the grammar column against the frozen rubric, where **4 means "minor slips 
 
 The more interesting part is what *doesn't* keep pace. `large_fp16` writes near-clean sentences (3.83) and still only manages 3.23 on consistency and 2.26 on landing an ending. **Grammar arrives well before sense does.** The model has learned English and hasn't yet learned to hold a story in its head. Its val loss was still falling when the tokens ran out (finding 3), so this is a snapshot of a model mid-climb rather than a finished one, which is a nice thing to know: there's clearly more in there.
 
-## Three findings that outlive the numbers
+## Four findings that outlive the numbers
 
 **1. Coherence has a pecking order, and it looks universal.** grammar > consistency > completes-sensibly. All 8 sweep configs. All 5 published TinyStories checkpoints. And the real, human-written gold text (4.74 / 4.68 / 4.29). Fourteen out of fourteen, no exceptions. Models learn to shape a sentence long before they learn to hold state across sentences, and landing an ending arrives last. Even human prose tilts the same way, which suggests this is the shape of the task rather than an artifact of our models being small.
 
@@ -99,6 +99,17 @@ The more interesting part is what *doesn't* keep pace. `large_fp16` writes near-
 | large  |               3.3% |                  5.0% | 1.5x  |
 
 Nothing converged, so 500M tokens is binding on *both* arms. But ternary is measurably further from the end of its own curve, and the gap widens with model size. Ternary is still descending while fp16 has started to level off. So quantization doesn't only cost quality at a fixed token budget, **it seems to raise the token budget you needed in the first place**, and to ask for more the bigger you build. Which also means every ternary number above is a floor, not a ceiling: these models never got the budget they were asking for.
+
+You can see both halves of this in the curves:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/training-curves-dark.png" />
+  <img src="docs/training-curves.png" alt="Left: validation perplexity over 500M tokens, every curve still descending at the cutoff. Right: the train/val gap, flat near 0.05 nats for all eight configs." width="100%" />
+</picture>
+
+**4. And no, they didn't overfit.** That's the right-hand panel, and it's worth a moment because it rules out the obvious alternative explanation. The generalization gap sits at roughly 0.05 nats for every config, a val/train perplexity ratio of about 1.05, and it never opens up. It's flat across a 20x range of model size and identical across both precisions. Nobody is memorizing; these models are underfitting, which is exactly what you'd expect from curves that are still falling when the data runs out.
+
+That has a second consequence worth naming. TernaryLM framed its ~2x worse perplexity as ternary behaving like an implicit regularizer, and it's a tidy story. **We don't see it.** If ternary were regularizing, its generalization gap should be *smaller* than fp16's. Ours is flat, and if anything a hair larger (0.049 vs 0.045 averaged over tiers, which is within noise). Ternary's worse perplexity here isn't a regularization tradeoff at all. It's just underfitting, and the fix is data, not a smaller model.
 
 ## Where that leaves us on the ladder
 
