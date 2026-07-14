@@ -32,7 +32,7 @@ jobs:
       # pointer as text and the loader would reject it as a non-TCP1 pack.
       - name: Check the baked pack is a real TCP1 pack
         run: |
-          head -c 4 web/models/nanofable-16m-fp16.tpack | grep -q 'TCP1'
+          head -c 4 web/models/nanofable-28m-fp16.tpack | grep -q 'TCP1'
 
       # Pages must already be enabled with source = GitHub Actions; GITHUB_TOKEN
       # is not permitted to create the Pages site itself (enablement: true fails

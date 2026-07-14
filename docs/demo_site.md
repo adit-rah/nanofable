@@ -97,8 +97,8 @@ python scripts/pack_model.py --ckpt local/tiny_ternary_0.pt --tier tiny \
 python3 -m http.server 8000 -d web
 ```
 
-`web/models/` commits **only** the baked default (`nanofable-16m-fp16.tpack`); everything
-else there is gitignored. `web/manifest.json` lists all 8 sweep models under the HF release
+`web/models/` commits **only** the baked default (`nanofable-28m-fp16.tpack`, the best
+coherence score in the sweep); everything else there is gitignored. `web/manifest.json` lists all 8 sweep models under the HF release
 naming (`NanoFable-<params>-<precision>`, tiers tiny/small/medium/large = 1M/6M/16M/28M):
 the baked one by relative URL, the other seven by their HuggingFace repo URL
 (`https://huggingface.co/adrahmana/NanoFable-<params>-<precision>/resolve/main/model.tpack`),
